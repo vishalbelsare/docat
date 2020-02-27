@@ -18,6 +18,7 @@
         <div v-if="!fullscreen" class="md-layout-item md-size-15 md-small-hide"></div>
         <div class="md-layout-item">
           <slot></slot>
+          <Login />
           <div class="help" v-if="!fullscreen">
             <router-link to="/help">help</router-link>
           </div>
@@ -29,8 +30,13 @@
 </template>
 
 <script>
+import Login from '@/components/Login.vue'
+
 export default {
   name: 'layout',
+  components: {
+    Login
+  },
   props: {
     fullscreen: Boolean,
   }

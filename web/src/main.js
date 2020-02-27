@@ -39,6 +39,10 @@ import VueMarkdown from 'vue-markdown'
 
 Vue.use(VueMarkdown);
 
+// google login
+import GAuth from 'vue-google-oauth2'
+Vue.use(GAuth, {clientId: process.env.VUE_APP_GOOGLE_CLIENT_ID})
+
 // configure vue router (https://router.vuejs.org/installation.html)
 import VueRouter from 'vue-router'
 

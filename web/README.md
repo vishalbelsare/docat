@@ -5,6 +5,9 @@
 yarn install
 ```
 
+Configure the GOOGLE_CLIENT_ID in your
+`.env.development.local`.
+
 ### Compiles and hot-reloads for development
 
 Configure the backend connection by setting 
