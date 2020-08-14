@@ -17,9 +17,7 @@ RUN apk update && \
     rm -rf /var/cache/apk/* && \
     mkdir /run/nginx
 
-RUN mkdir -p /etc/nginx/locations.d
 RUN mkdir -p /var/docat/doc
-RUN chown -R nginx /var/docat /etc/nginx/locations.d
 
 # install the application
 RUN mkdir -p /var/www/html

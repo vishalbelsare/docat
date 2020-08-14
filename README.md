@@ -16,7 +16,6 @@ you can optionally use volumes to save state:
 docker run \
   --detach \
   --volume /path/to/doc:/var/docat/doc/ \
-  --volume /path/to/locations:/etc/nginx/locations.d/ \
   --publish 8000:80 \
   randombenj/docat
 ```

@@ -27,27 +27,6 @@ def create_symlink(source, destination):
         return False
 
 
-def create_nginx_config(project, project_base_path):
-    """
-    Creates an nginx configuration for an upploaded project
-    version.
-
-    Args:
-        project (str): name of the project
-        project_base_path (pathlib.Path): base path of the project
-    """
-    nginx_location = Path("/etc/nginx/locations.d")
-    nginx_config = nginx_location / f"{project}-doc.conf"
-    if not nginx_config.exists():
-        out_parsed_template = Template(open("templates/nginx-doc.conf").read()).render(
-            project=project, dir_path=str(project_base_path)
-        )
-        with nginx_config.open("w") as f:
-            f.write(out_parsed_template)
-
-        subprocess.run(["nginx", "-s" "reload"])
-
-
 def extract_archive(target_file, destination):
     """
     Extracts the given archive to the directory

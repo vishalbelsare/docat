@@ -23,8 +23,8 @@ export default {
    * Returns all projects
    */
   async get() {
-    const resp = await fetch(`${this.baseURL}/${resource}/`)
-    return await resp.json()
+    const resp = await fetch(`${this.baseURL}/api/projects`)
+    return (await resp.json()).projects
   },
 
   /**
@@ -68,9 +68,8 @@ export default {
    * @param {string} projectName Name of the project
    */
   async getVersions(projectName) {
-    const resp = await fetch(`${this.baseURL}/${resource}/${projectName}/`)
-    return (await resp.json())
-      .filter((version) => version.type == 'directory')
+    const resp = await fetch(`${this.baseURL}/api/projects/${projectName}`)
+    return (await resp.json()).versions
   },
 
   /**

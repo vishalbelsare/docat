@@ -14,9 +14,7 @@ server {
     server_name _;
 
     location /doc {
-        root /var/docat;
-        autoindex on;
-        autoindex_format json;
+        root /var/docat/;
     }
 
     location /api {
