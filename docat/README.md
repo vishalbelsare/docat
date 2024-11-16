@@ -5,7 +5,7 @@ tag versions of the documentation.
 
 ## development enviroment
 
-You will need to install [poetry](https://python-poetry.org/docs/#installation) `pip install poetry==1.1.5`.
+You will need to install [poetry](https://python-poetry.org/docs/#installation) `pip install poetry==1.7.1`.
 
 Install the dependencies and run the application:
 
@@ -19,7 +19,7 @@ poetry install
 ### Config Options
 
 * **DOCAT_SERVE_FILES**: Serve static documentation instead of a nginx (for testing)
-* **DOCAT_DOC_PATH**: Upload directory for static files (needs to match nginx config)
+* **DOCAT_STORAGE_PATH**: Upload directory for static files (needs to match nginx config)
 * **FLASK_DEBUG**: Start flask in debug mode
 
 ## Usage

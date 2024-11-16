@@ -1,0 +1,37 @@
+.footer {
+    margin-top: 32px;
+    padding: 15px 0 15px 0;
+}
+
+.help-link {
+    font-weight: 200;
+    text-decoration: none;
+    font-size: 20px;
+    padding-left: 8px;
+}
+
+.version-info {
+    font-weight: 200;
+    font-size: 14px;
+    margin-top: 0.8em;
+    color: var(--primary-foreground);
+    padding-left: 8px;
+}
+
+@media only screen and (min-width: 1000px) {
+    .footer {
+        padding-left: calc(15% + 16px);
+    }
+}
+
+@media only screen and (max-width: 1000px) {
+    .footer {
+        padding-left: 30px;
+    }
+}
+
+@media only screen and (max-width: 300px) {
+    .footer {
+        padding-left: 10px;
+    }
+}

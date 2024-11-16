@@ -1,17 +1,39 @@
 """
 docat utilities
 """
+
 import hashlib
 import os
 import shutil
-import subprocess
+from datetime import datetime
+from functools import cache
 from pathlib import Path
-from zipfile import ZipFile
+from zipfile import ZipFile, ZipInfo
 
-from jinja2 import Template
+from docat.models import Project, ProjectDetail, Projects, ProjectVersion, Stats
 
 NGINX_CONFIG_PATH = Path("/etc/nginx/locations.d")
-UPLOAD_FOLDER = Path("/var/docat/doc")
+UPLOAD_FOLDER = "doc"
+DB_PATH = "db.json"
+
+
+def is_dir(self):
+    """Return True if this archive member is a directory."""
+    if self.filename.endswith("/"):
+        return True
+    # The ZIP format specification requires to use forward slashes
+    # as the directory separator, but in practice some ZIP files
+    # created on Windows can use backward slashes.  For compatibility
+    # with the extraction code which already handles this:
+    if os.path.altsep:
+        return self.filename.endswith((os.path.sep, os.path.altsep))
+    return False
+
+
+# Patch is_dir to allow windows zip files to be
+# extracted correctly
+# see: https://github.com/python/cpython/issues/117084
+ZipInfo.is_dir = is_dir  # type: ignore[method-assign]
 
 
 def create_symlink(source, destination):
@@ -32,26 +54,6 @@ def create_symlink(source, destination):
         return False
 
 
-def create_nginx_config(project, project_base_path):
-    """
-    Creates an Nginx configuration for an uploaded project
-    version.
-
-    Args:
-        project (str): name of the project
-        project_base_path (pathlib.Path): base path of the project
-    """
-    nginx_config = NGINX_CONFIG_PATH / f"{project}-doc.conf"
-    if not nginx_config.exists():
-        out_parsed_template = Template((Path(__file__).parent / "templates" / "nginx-doc.conf").read_text()).render(
-            project=project, dir_path=str(project_base_path)
-        )
-        with nginx_config.open("w") as f:
-            f.write(out_parsed_template)
-
-        subprocess.run(["nginx", "-s", "reload"])
-
-
 def extract_archive(target_file, destination):
     """
     Extracts the given archive to the directory
@@ -70,7 +72,7 @@ def extract_archive(target_file, destination):
         target_file.unlink()  # remove the zip file
 
 
-def remove_docs(project, version):
+def remove_docs(project: str, version: str, upload_folder_path: Path):
     """
     Delete documentation
 
@@ -78,7 +80,7 @@ def remove_docs(project, version):
         project (str): name of the project
         version (str): project version
     """
-    docs = UPLOAD_FOLDER / project / version
+    docs = upload_folder_path / project / version
     if docs.exists():
         # remove the requested version
         # rmtree can not remove a symlink
@@ -91,6 +93,9 @@ def remove_docs(project, version):
         for link in (s for s in docs.parent.iterdir() if s.is_symlink()):
             if not link.resolve().exists():
                 link.unlink()
+
+        # remove size info
+        (upload_folder_path / project / ".size").unlink(missing_ok=True)
 
         # remove empty projects
         if not [d for d in docs.parent.iterdir() if d.is_dir()]:
@@ -112,3 +117,169 @@ def calculate_token(password, salt):
         salt (byte): the salt used for the password
     """
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000).hex()
+
+
+def is_forbidden_project_name(name: str) -> bool:
+    """
+    Checks if the given project name is forbidden.
+    The project name is forbidden if it conflicts with
+    a page on the docat website.
+    """
+    name = name.lower().strip()
+    return name in ["upload", "claim", "delete", "help", "doc", "api"]
+
+
+UNITS_MAPPING = [
+    (1 << 50, " PB"),
+    (1 << 40, " TB"),
+    (1 << 30, " GB"),
+    (1 << 20, " MB"),
+    (1 << 10, " KB"),
+    (1, " byte"),
+]
+
+
+def readable_size(bytes: int) -> str:
+    """
+    Get human-readable file sizes.
+    simplified version of https://pypi.python.org/pypi/hurry.filesize/
+
+    https://stackoverflow.com/a/12912296/12356463
+    """
+    size_suffix = ""
+    for factor, suffix in UNITS_MAPPING:
+        if bytes >= factor:
+            size_suffix = suffix
+            break
+
+    amount = int(bytes / factor)
+    if size_suffix == " byte" and amount > 1:
+        size_suffix = size_suffix + "s"
+
+    if amount == 0:
+        size_suffix = " bytes"
+
+    return str(amount) + size_suffix
+
+
+@cache
+def get_dir_size(path: Path) -> int:
+    """
+    Calculate the total size of a directory.
+
+    Results are cached (memoizing) by path.
+    """
+    total = 0
+    with os.scandir(path) as it:
+        for entry in it:
+            if entry.is_file():
+                total += entry.stat().st_size
+            elif entry.is_dir():
+                total += get_dir_size(entry.path)
+    return total
+
+
+@cache
+def get_system_stats(upload_folder_path: Path) -> Stats:
+    """
+    Return all docat statistics.
+
+    Results are cached (memoizing) by path.
+    """
+
+    dirs = 0
+    versions = 0
+    size = 0
+    # Note: Not great nesting with the deep nesting
+    # but it needs to run fast, consider speed when refactoring!
+    with os.scandir(upload_folder_path) as root:
+        for f in root:
+            if f.is_dir():
+                dirs += 1
+                with os.scandir(f.path) as project:
+                    for v in project:
+                        if v.is_dir() and not v.is_symlink():
+                            size += get_dir_size(v.path)
+                            versions += 1
+
+    return Stats(
+        n_projects=dirs,
+        n_versions=versions,
+        storage=readable_size(size),
+    )
+
+
+def get_all_projects(upload_folder_path: Path, include_hidden: bool) -> Projects:
+    """
+    Returns all projects in the upload folder.
+    """
+    projects: list[Project] = []
+
+    for project in sorted(upload_folder_path.iterdir()):
+        if not project.is_dir():
+            continue
+
+        details = get_project_details(upload_folder_path, project.name, include_hidden)
+
+        if details is None:
+            continue
+
+        if len(details.versions) < 1:
+            continue
+
+        project_name = str(project.relative_to(upload_folder_path))
+        project_has_logo = (upload_folder_path / project / "logo").exists()
+        projects.append(
+            Project(
+                name=project_name,
+                logo=project_has_logo,
+                versions=details.versions,
+                storage=readable_size(get_dir_size(upload_folder_path / project)),
+            )
+        )
+
+    return Projects(projects=projects)
+
+
+def get_version_timestamp(version_folder: Path) -> datetime:
+    """
+    Returns the timestamp of a version
+    """
+    return datetime.fromtimestamp(version_folder.stat().st_ctime)
+
+
+def get_project_details(upload_folder_path: Path, project_name: str, include_hidden: bool) -> ProjectDetail | None:
+    """
+    Returns all versions and tags for a project.
+    """
+    docs_folder = upload_folder_path / project_name
+
+    if not docs_folder.exists():
+        return None
+
+    tags = [x for x in docs_folder.iterdir() if x.is_dir() and x.is_symlink()]
+
+    def should_include(name: str) -> bool:
+        if include_hidden:
+            return True
+
+        return not (docs_folder / name / ".hidden").exists()
+
+    return ProjectDetail(
+        name=project_name,
+        storage=readable_size(get_dir_size(docs_folder)),
+        versions=sorted(
+            [
+                ProjectVersion(
+                    name=str(x.relative_to(docs_folder)),
+                    tags=[str(t.relative_to(docs_folder)) for t in tags if t.resolve() == x],
+                    timestamp=get_version_timestamp(x),
+                    hidden=(docs_folder / x.name / ".hidden").exists(),
+                )
+                for x in docs_folder.iterdir()
+                if x.is_dir() and not x.is_symlink() and should_include(x.name)
+            ],
+            key=lambda k: k.name,
+            reverse=True,
+        ),
+    )

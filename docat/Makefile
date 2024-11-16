@@ -1,7 +1,12 @@
+.PHONY: all
+all: format lint typing pytest
+
 format:
-	poetry run isort docat tests
-	poetry run black docat tests
+	poetry run ruff check --fix
+	poetry run ruff format
 lint:
-	poetry run flake8 docat tests
+	poetry run ruff check
+typing:
+	poetry run mypy .
 pytest:
 	poetry run pytest

@@ -1,0 +1,8 @@
+.project-list {
+  display: grid;
+}
+
+.project-list {
+  min-width: 250px;
+  margin-right: 32px;
+}

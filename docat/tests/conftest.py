@@ -4,20 +4,34 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from tinydb import TinyDB
-from tinydb.storages import MemoryStorage
 
 import docat.app as docat
 from docat.utils import create_symlink
 
 
+@pytest.fixture(autouse=True)
+def setup_docat_paths():
+    """
+    Set up the temporary paths for the docat app.
+    """
+
+    temp_dir = tempfile.TemporaryDirectory()
+    docat.DOCAT_STORAGE_PATH = Path(temp_dir.name)
+    docat.DOCAT_DB_PATH = Path(temp_dir.name) / "db.json"
+    docat.DOCAT_UPLOAD_FOLDER = Path(temp_dir.name) / "doc"
+
+    yield
+
+    temp_dir.cleanup()
+
+
 @pytest.fixture
 def client():
-    temp_dir = tempfile.TemporaryDirectory()
-    docat.DOCAT_UPLOAD_FOLDER = Path(temp_dir.name)
-    docat.db = TinyDB(storage=MemoryStorage)
+    docat.db = TinyDB(docat.DOCAT_DB_PATH)
+
     yield TestClient(docat.app)
+
     docat.app.db = None
-    temp_dir.cleanup()
 
 
 @pytest.fixture
@@ -29,21 +43,14 @@ def client_with_claimed_project(client):
 
 
 @pytest.fixture
-def temp_project_version(tmp_path):
-    docs = tmp_path / "doc"
-    config = tmp_path / "location.d"
-
-    docs.mkdir()
-    config.mkdir()
-
+def temp_project_version():
     def __create(project, version):
-        (config / f"{project}-doc.conf").touch()
-        version_docs = docs / project / version
+        version_docs = docat.DOCAT_UPLOAD_FOLDER / project / version
         version_docs.mkdir(parents=True)
         (version_docs / "index.html").touch()
 
-        create_symlink(version_docs, docs / project / "latest")
+        create_symlink(version_docs, docat.DOCAT_UPLOAD_FOLDER / project / "latest")
 
-        return docs, config
+        return docat.DOCAT_UPLOAD_FOLDER
 
     yield __create

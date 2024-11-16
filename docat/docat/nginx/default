@@ -8,22 +8,22 @@ server {
 
     root /var/www/html;
 
-    # Add index.php to the list if you are using PHP
-    index index.html index.htm index.nginx-debian.html;
+    add_header Content-Security-Policy "frame-ancestors 'self';";
+    index index.html index.htm index.pdf /index.html;
 
     server_name _;
 
     location /doc {
         root /var/docat;
-        autoindex on;
-        autoindex_format json;
+        absolute_redirect off;
     }
 
     location /api {
-        client_max_body_size 100M;
+        client_max_body_size $MAX_UPLOAD_SIZE;
         proxy_pass http://python_backend;
     }
 
     location / {
+        try_files $uri $uri/ /index.html =404;
     }
 }

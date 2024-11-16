@@ -1,0 +1,12 @@
+.search-bar {
+  border: 1px solid #e8e8e8;
+  float: right;
+  margin: 8px 16px 0 0;
+  border: none;
+}
+
+@media only screen and (max-width: 500px) {
+  .search-bar {
+    display: none;
+  }
+}

@@ -1,15 +1,21 @@
 # building frontend
-FROM node:16.14 as build-deps
-COPY web ./
-# fix docker not following symlinks
-COPY doc/getting-started.md ./src/assets/
+FROM node:22-slim AS frontend
+WORKDIR /app/frontend
+
+COPY web/package.json web/yarn.lock ./
 RUN yarn install --frozen-lockfile
-RUN yarn lint
-RUN yarn run test:unit
+
+# fix docker not following symlinks
+COPY web ./
+COPY doc/getting-started.md ./src/assets/
+
+ARG DOCAT_VERSION=unknown
+ENV VITE_DOCAT_VERSION=$DOCAT_VERSION
+
 RUN yarn build
 
 # setup Python
-FROM python:3.10.4-alpine3.15 AS backend
+FROM python:3.12-slim AS backend
 
 # configure docker container
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -19,37 +25,35 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     # do not ask any interactive question
     POETRY_NO_INTERACTION=1
 
-RUN apk update && \
-    apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo
-RUN pip install poetry==1.1.13
+RUN python -m pip install --upgrade pip
+RUN python -m pip install poetry==1.7.1
 COPY /docat/pyproject.toml /docat/poetry.lock /app/
 
 # Install the application
 WORKDIR /app/docat
-RUN poetry install --no-root --no-ansi --no-dev
+RUN poetry install --no-root --no-ansi --only main
 
 # production
-FROM python:3.10.4-alpine3.15
+FROM python:3.12-slim
+
+# defaults
+ENV MAX_UPLOAD_SIZE=100M
 
 # set up the system
-RUN apk update && \
-    apk add nginx dumb-init && \
-    rm -rf /var/cache/apk/*
+RUN apt-get update && \
+    apt-get install --yes nginx dumb-init libmagic1 gettext && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /etc/nginx/locations.d
 RUN mkdir -p /var/docat/doc
-RUN chown -R nginx /var/docat /etc/nginx/locations.d
 
 # install the application
 RUN mkdir -p /var/www/html
-COPY --from=build-deps /dist /var/www/html
+COPY --from=frontend /app/frontend/dist /var/www/html
 COPY docat /app/docat
 WORKDIR /app/docat
-
-RUN cp docat/nginx/default /etc/nginx/http.d/default.conf
 
 # Copy the build artifact (.venv)
 COPY --from=backend /app /app/docat
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-CMD ["sh", "-c", "nginx && .venv/bin/python -m uvicorn --host 0.0.0.0 --port 5000 docat.app:app"]
+CMD ["sh", "-c", "envsubst '$MAX_UPLOAD_SIZE' < /app/docat/docat/nginx/default > /etc/nginx/sites-enabled/default && nginx && .venv/bin/python -m uvicorn --host 0.0.0.0 --port 5000 docat.app:app"]
